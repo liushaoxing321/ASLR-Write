@@ -1,75 +1,91 @@
-//**************************************************//
-//**This Header File is used in combination********//
-//**with a dynamic Library and must be rewritten**//
-//**if you want to use it for another purpose****//
-//**********************************************//
-
 //******************************************//
 //**Credits: HackJack & Razzile(Kamizoom)**//
 //****************************************//
 
 //********************************************//
-//**Usage: writeData(0xOFFSET, 0xDATA,SIZE)**//
+//**Usage: writeData(0xOFFSET, "Hex Data"); **//
 //******************************************//
 
 //importing and including files
 
 #import <Foundation/Foundation.h>
-#import <mach/mach.h>
-#include <mach-o/dyld.h>
-#include <dlfcn.h>
 #import <mach/mach_traps.h>
+#import <mach-o/dyld.h>
+#import <mach/mach.h>
+#import <substrate.h>
+#import <dlfcn.h>
+#include <iostream>
+#include <string>
+#include <vector>
+#include <sstream>
+#include <stdio.h>
+#include <stdlib.h>
+
+using namespace std;
 
 /*
-This is the main Function. This is where the writing takes place.
-It declares the port as mach_task_self, calculates the offset.
-Then it changes the Protections at the offset to be able to write to it.
-After that it sets the Protections back so the Apps runs as before
-Then it writes either 4 Byte or 2 to the address.
-Parameters: the address, the data to be written, the size 2 or 4
-Return: True = Success or False = Failed
-*/
+ writes data to a memory address
+ takes the address and the hex as a string as parameters
+ */
 
-__attribute__((visibility("hidden"))) bool writeData(vm_address_t offset,  unsigned long long data, int size) {
-
+bool writeData(vm_address_t address,  string str) {
+    
     //declaring variables
-
-    kern_return_t err;
+    
+    kern_return_t err = 0;
     mach_port_t port = mach_task_self();
-    vm_address_t address = (offset + _dyld_get_image_vmaddr_slide(0));
-
-    //set memory protections to allow us writing code there
-
-    err = vm_protect(port, (vm_address_t) address, size, NO,VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
-
-    //check if the protection fails
-
-    if (err != KERN_SUCCESS) {
-
-       return FALSE;
-
+    
+    size_t find = str.find("0x");
+    
+    if (find != -1) {
+        
+        str.replace(find, 2, "");
     }
+    
+    int len = str.size();
+    
+    char data[len / 2];
+    
+    int x = 0;
+    
+    for(int i = 0; i < len; i += 2) {
+        
+        string dat = str.substr(i, 2);
+        uint8_t tmp;
+        sscanf(dat.c_str(), "%hhx", &tmp);
+        data[x] = tmp;
+        x++;
+        
+    }
+    
+    //set memory protections to allow us writing code there
+    
+    err = vm_protect(port, (vm_address_t)address, sizeof(data), NO, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
+    
+    //check if the protection fails
+    
+    if (err != KERN_SUCCESS)
+        return FALSE;
     
     //write code to memory
     
-    err = vm_write(port, (vm_address_t)address, (vm_address_t)&data, size);
+    err = vm_write(port,address,(vm_address_t)&data,sizeof(data));
     
-    if (err != KERN_SUCCESS) {
-        
+    if (err != KERN_SUCCESS)
         return FALSE;
-        
-    }
+    
+    /* Flush CPU data cache to save write to RAM - Thanks to c0deh4cker*/
+	sys_dcache_flush(address, sizeof(data));
+	/* Invalidate instruction cache to make the CPU read from RAM */
+	sys_icache_invalidate(address, sizeof(data));
     
     //set the protections back to normal so the app can access this address as usual
-
-    err = vm_protect(port, (vm_address_t)address, size, NO,VM_PROT_READ | VM_PROT_EXECUTE);
     
-    if (err != KERN_SUCCESS) {
-        
+    err = vm_protect(port, (vm_address_t)address, sizeof(data), NO, VM_PROT_READ | VM_PROT_EXECUTE);
+    
+    if (err != KERN_SUCCESS)
         return FALSE;
-        
-    }
-
+    
     return TRUE;
 	
 }
