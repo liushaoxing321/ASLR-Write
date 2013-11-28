@@ -14,6 +14,7 @@
 #import <mach/mach.h>
 #import <substrate.h>
 #import <dlfcn.h>
+#include <libkern/OSCacheControl.h>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -75,9 +76,9 @@ bool writeData(vm_address_t address,  string str) {
         return FALSE;
     
     /* Flush CPU data cache to save write to RAM - Thanks to c0deh4cker*/
-	sys_dcache_flush(address, sizeof(data));
+	sys_dcache_flush((void *)address, sizeof(data));
 	/* Invalidate instruction cache to make the CPU read from RAM */
-	sys_icache_invalidate(address, sizeof(data));
+	sys_icache_invalidate((void *)address, sizeof(data));
     
     //set the protections back to normal so the app can access this address as usual
     
